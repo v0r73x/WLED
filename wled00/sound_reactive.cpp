@@ -65,24 +65,42 @@ void transmitAudioData() {
 } // transmitAudioData()
 
 /***************** SHARED AUDIO VARIABLES *****************/
-// MOVED TO SOUND_REACTIVE.H
+
+// TODO: put comments in one place only so they don't get out of sync as they change
+
+uint8_t myVals[32];                             // Used to store a pile of samples because WLED frame rate and WLED sample rate are not synchronized. Frame rate is too low.
+int sample;                                     // Current sample. Must only be updated ONCE!!!
+int sampleAgc;                                  // Our AGC sample
+bool samplePeak = 0;                            // Boolean flag for peak. Responding routine must reset this flag
+float sampleAvg = 0;                            // Smoothed Average
+double FFT_Magnitude = 0;                       // Same here. Not currently used though
+double FFT_MajorPeak = 0;                       // Optional inclusion for our volume routines
+uint16_t mAvg = 0;
+
+// Try and normalize fftBin values to a max of 4096, so that 4096/16 = 256.
+// Oh, and bins 0,1,2 are no good, so we'll zero them out.
+double fftBin[samples];                 // raw FFT data
+int fftResult[16];                      // summary of bins array. 16 summary bins.
 
 /************ SAMPLING AND FFT LOCAL VARIABLES ************/
 
+uint8_t binNum;                                 // Used to select the bin for FFT based beat detection
+uint8_t maxVol = 10;                            // Reasonable value for constant volume for 'peak detector', as it won't always trigger
 uint8_t targetAgc = 60;                         // This is our setPoint at 20% of max for the adjusted output
 bool udpSamplePeak = 0;                         // Boolean flag for peak. Set at the same tiem as samplePeak, but reset by transmitAudioData
 int delayMs = 10;                               // I don't want to sample too often and overload WLED
-int sampleAdj;                                  // Gain adjusted sample value
 int micIn;                                      // Current sample starts with negative values and large values, which is why it's 16 bit signed
+int sampleAdj;                                  // Gain adjusted sample value
 int tmpSample;                                  // An interim sample variable used for calculatioins
 uint16_t micData;                               // Analog input for FFT
 uint16_t micDataSm;                             // Smoothed mic data, as it's a bit twitchy
 long lastTime = 0;
 long timeOfPeak = 0;
 float expAdjF;                                  // Used for exponential filter.
-float weighting = 0.2;                          // Exponential filter weighting. Will be adjustable in a future release.
 float micLev = 0;                               // Used to convert returned value to have '0' as minimum. A leveller
 float multAgc;                                  // sample * multAgc = sampleAgc. Our multiplier
+float weighting = 0.2;                          // Exponential filter weighting. Will be adjustable in a future release.
+double beat = 0;                                // beat Detection
 
 /************* SAMPLING AND FFT CODE ************/
 
