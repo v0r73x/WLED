@@ -1,9 +1,13 @@
 #include "src/dependencies/timezone/Timezone.h"
 #include "wled.h"
+#include "wled_math.h"
 
 /*
  * Acquires time from NTP server
  */
+//#define WLED_DEBUG_NTP
+#define NTP_SYNC_INTERVAL 42000UL //Get fresh NTP time about twice per day
+
 Timezone* tz;
 
 #define TZ_UTC                  0
@@ -25,6 +29,7 @@ Timezone* tz;
 #define TZ_AUSTRALIA_NORTHERN  16
 #define TZ_AUSTRALIA_SOUTHERN  17
 #define TZ_HAWAII              18
+#define TZ_NOVOSIBIRSK         19
 #define TZ_INIT               255
 
 byte tzCurrent = TZ_INIT; //uninitialized
@@ -111,7 +116,7 @@ void updateTimezone() {
       break;
     }
     case TZ_AUSTRALIA_NORTHERN : {
-      tcrStandard = {First, Sun, Apr, 3, 570};   //ACST = UTC + 9.5 hours
+      tcrDaylight = {First, Sun, Apr, 3, 570};   //ACST = UTC + 9.5 hours
       tcrStandard = tcrDaylight;
       break;
     }
@@ -125,6 +130,11 @@ void updateTimezone() {
       tcrStandard = tcrDaylight;
       break;
     }
+    case TZ_NOVOSIBIRSK : {
+      tcrDaylight = {Last, Sun, Mar, 1, 420};     //CST = UTC + 7 hours
+      tcrStandard = tcrDaylight;
+      break;
+    }
   }
 
   tzCurrent = currentTimezone;
@@ -132,9 +142,28 @@ void updateTimezone() {
   tz = new Timezone(tcrDaylight, tcrStandard);
 }
 
+void handleTime() {
+  handleNetworkTime();
+
+  toki.millisecond();
+  toki.setTick();
+
+  if (toki.isTick()) //true only in the first loop after a new second started
+  {
+    #ifdef WLED_DEBUG_NTP
+    Serial.print(F("TICK! "));
+    toki.printTime(toki.getTime());
+    #endif
+    updateLocalTime();
+    checkTimers();
+    checkCountdown();
+    handleOverlays();
+  }
+}
+
 void handleNetworkTime()
 {
-  if (ntpEnabled && ntpConnected && millis() - ntpLastSyncTime > 50000000L && WLED_CONNECTED)
+  if (ntpEnabled && ntpConnected && millis() - ntpLastSyncTime > (1000*NTP_SYNC_INTERVAL) && WLED_CONNECTED)
   {
     if (millis() - ntpPacketSentTime > 10000)
     {
@@ -181,35 +210,52 @@ void sendNTPPacket()
 bool checkNTPResponse()
 {
   int cb = ntpUdp.parsePacket();
-  if (cb) {
-    DEBUG_PRINT(F("NTP recv, l="));
-    DEBUG_PRINTLN(cb);
-    byte pbuf[NTP_PACKET_SIZE];
-    ntpUdp.read(pbuf, NTP_PACKET_SIZE); // read the packet into the buffer
+  if (!cb) return false;
 
-    unsigned long highWord = word(pbuf[40], pbuf[41]);
-    unsigned long lowWord = word(pbuf[42], pbuf[43]);
-    if (highWord == 0 && lowWord == 0) return false;
-    
-    unsigned long secsSince1900 = highWord << 16 | lowWord;
- 
-    DEBUG_PRINT(F("Unix time = "));
-    unsigned long epoch = secsSince1900 - 2208988799UL; //subtract 70 years -1sec (on avg. more precision)
-    setTime(epoch);
-    DEBUG_PRINTLN(epoch);
-    if (countdownTime - now() > 0) countdownOverTriggered = false;
-    // if time changed re-calculate sunrise/sunset
-    updateLocalTime();
-    calculateSunriseAndSunset();
-    return true;
-  }
-  return false;
+  uint32_t ntpPacketReceivedTime = millis();
+  DEBUG_PRINT(F("NTP recv, l="));
+  DEBUG_PRINTLN(cb);
+  byte pbuf[NTP_PACKET_SIZE];
+  ntpUdp.read(pbuf, NTP_PACKET_SIZE); // read the packet into the buffer
+
+  Toki::Time arrived  = toki.fromNTP(pbuf + 32);
+  Toki::Time departed = toki.fromNTP(pbuf + 40);
+  if (departed.sec == 0) return false;
+  //basic half roundtrip estimation
+  uint32_t serverDelay = toki.msDifference(arrived, departed);
+  uint32_t offset = (ntpPacketReceivedTime - ntpPacketSentTime - serverDelay) >> 1;
+  #ifdef WLED_DEBUG_NTP
+  //the time the packet departed the NTP server
+  toki.printTime(departed);
+  #endif
+
+  toki.adjust(departed, offset);
+  toki.setTime(departed, TOKI_TS_NTP);
+
+  #ifdef WLED_DEBUG_NTP
+  Serial.print("Arrived: ");
+  toki.printTime(arrived);
+  Serial.print("Time: ");
+  toki.printTime(departed);
+  Serial.print("Roundtrip: ");
+  Serial.println(ntpPacketReceivedTime - ntpPacketSentTime);
+  Serial.print("Offset: ");
+  Serial.println(offset);
+  Serial.print("Serverdelay: ");
+  Serial.println(serverDelay);
+  #endif
+
+  if (countdownTime - toki.second() > 0) countdownOverTriggered = false;
+  // if time changed re-calculate sunrise/sunset
+  updateLocalTime();
+  calculateSunriseAndSunset();
+  return true;
 }
 
 void updateLocalTime()
 {
   if (currentTimezone != tzCurrent) updateTimezone();
-  unsigned long tmc = now()+ utcOffsetSecs;
+  unsigned long tmc = toki.second()+ utcOffsetSecs;
   localTime = tz->toLocal(tmc);
 }
 
@@ -233,13 +279,13 @@ void setCountdown()
 {
   if (currentTimezone != tzCurrent) updateTimezone();
   countdownTime = tz->toUTC(getUnixTime(countdownHour, countdownMin, countdownSec, countdownDay, countdownMonth, countdownYear));
-  if (countdownTime - now() > 0) countdownOverTriggered = false;
+  if (countdownTime - toki.second() > 0) countdownOverTriggered = false;
 }
 
 //returns true if countdown just over
 bool checkCountdown()
 {
-  unsigned long n = now();
+  unsigned long n = toki.second();
   if (countdownMode) localTime = countdownTime - n + utcOffsetSecs;
   if (n > countdownTime) {
     if (countdownMode) localTime = n - countdownTime + utcOffsetSecs;
@@ -268,13 +314,12 @@ void checkTimers()
 
     // re-calculate sunrise and sunset just after midnight
     if (!hour(localTime) && minute(localTime)==1) calculateSunriseAndSunset();
-    if (sunrise && sunset) daytime = difftime(localTime, sunrise) > 0 && difftime(localTime, sunset) < 0;
 
     DEBUG_PRINTF("Local time: %02d:%02d\n", hour(localTime), minute(localTime));
     for (uint8_t i = 0; i < 8; i++)
     {
       if (timerMacro[i] != 0
-          && (timerHours[i] == hour(localTime) || timerHours[i] == 24) //if hour is set to 24, activate every hour 
+          && (timerHours[i] == hour(localTime) || timerHours[i] == 24) //if hour is set to 24, activate every hour
           && timerMinutes[i] == minute(localTime)
           && (timerWeekday[i] & 0x01) //timer is enabled
           && ((timerWeekday[i] >> weekdayMondayFirst()) & 0x01)) //timer should activate at current day of week
@@ -317,50 +362,50 @@ void checkTimers()
 // get sunrise (or sunset) time (in minutes) for a given day at a given geo location
 int getSunriseUTC(int year, int month, int day, float lat, float lon, bool sunset=false) {
   //1. first calculate the day of the year
-  float N1 = floor(275 * month / 9);
-  float N2 = floor((month + 9) / 12);
-  float N3 = (1 + floor((year - 4 * floor(year / 4) + 2) / 3));
+  float N1 = 275 * month / 9;
+  float N2 = (month + 9) / 12;
+  float N3 = (1 + floor_t((year - 4 * floor_t(year / 4) + 2) / 3));
   float N = N1 - (N2 * N3) + day - 30;
 
   //2. convert the longitude to hour value and calculate an approximate time
-  float lngHour = lon / 15.0;      
+  float lngHour = lon / 15.0f;
   float t = N + (((sunset ? 18 : 6) - lngHour) / 24);
-  
-  //3. calculate the Sun's mean anomaly   
-  float M = (0.9856 * t) - 3.289;
+
+  //3. calculate the Sun's mean anomaly
+  float M = (0.9856f * t) - 3.289f;
 
   //4. calculate the Sun's true longitude
-  float L = fmod(M + (1.916 * sin(DEG_TO_RAD*M)) + (0.020 * sin(2*DEG_TO_RAD*M)) + 282.634, 360.0);
+  float L = fmod_t(M + (1.916f * sin_t(DEG_TO_RAD*M)) + (0.02f * sin_t(2*DEG_TO_RAD*M)) + 282.634f, 360.0f);
 
-  //5a. calculate the Sun's right ascension      
-  float RA = fmod(RAD_TO_DEG*atan(0.91764 * tan(DEG_TO_RAD*L)), 360.0);
+  //5a. calculate the Sun's right ascension
+  float RA = fmod_t(RAD_TO_DEG*atan_t(0.91764f * tan_t(DEG_TO_RAD*L)), 360.0f);
 
-  //5b. right ascension value needs to be in the same quadrant as L   
-  float Lquadrant  = floor( L/90) * 90;
-  float RAquadrant = floor(RA/90) * 90;
+  //5b. right ascension value needs to be in the same quadrant as L
+  float Lquadrant  = floor_t( L/90) * 90;
+  float RAquadrant = floor_t(RA/90) * 90;
   RA = RA + (Lquadrant - RAquadrant);
 
-  //5c. right ascension value needs to be converted into hours   
-  RA /= 15.;
+  //5c. right ascension value needs to be converted into hours
+  RA /= 15.0f;
 
   //6. calculate the Sun's declination
-  float sinDec = 0.39782 * sin(DEG_TO_RAD*L);
-  float cosDec = cos(asin(sinDec));
+  float sinDec = 0.39782f * sin_t(DEG_TO_RAD*L);
+  float cosDec = cos_t(asin_t(sinDec));
 
   //7a. calculate the Sun's local hour angle
-  float cosH = (sin(DEG_TO_RAD*ZENITH) - (sinDec * sin(DEG_TO_RAD*lat))) / (cosDec * cos(DEG_TO_RAD*lat));
+  float cosH = (sin_t(DEG_TO_RAD*ZENITH) - (sinDec * sin_t(DEG_TO_RAD*lat))) / (cosDec * cos_t(DEG_TO_RAD*lat));
   if (cosH > 1 && !sunset) return 0;  // the sun never rises on this location (on the specified date)
   if (cosH < -1 && sunset) return 0;  // the sun never sets on this location (on the specified date)
 
   //7b. finish calculating H and convert into hours
-  float H = sunset ? RAD_TO_DEG*acos(cosH) : 360 - RAD_TO_DEG*acos(cosH);
-  H /= 15.;
+  float H = sunset ? RAD_TO_DEG*acos_t(cosH) : 360 - RAD_TO_DEG*acos_t(cosH);
+  H /= 15.0f;
 
-  //8. calculate local mean time of rising/setting      
-  float T = H + RA - (0.06571 * t) - 6.622;
+  //8. calculate local mean time of rising/setting
+  float T = H + RA - (0.06571f * t) - 6.622f;
 
   //9. adjust back to UTC
-  float UT = fmod(T - lngHour, 24.0);
+  float UT = fmod_t(T - lngHour, 24.0f);
 
   // return in minutes from midnight
 	return UT*60;
@@ -398,4 +443,20 @@ void calculateSunriseAndSunset() {
       sunset = 0;
     }
   }
+}
+
+//time from JSON and HTTP API
+void setTimeFromAPI(uint32_t timein) {
+  if (timein == 0 || timein == UINT32_MAX) return;
+  uint32_t prev = toki.second();
+  //only apply if more accurate or there is a significant difference to the "more accurate" time source
+  uint32_t diff = (timein > prev) ? timein - prev : prev - timein;
+  if (toki.getTimeSource() > TOKI_TS_JSON && diff < 60U) return;
+
+  toki.setTime(timein, TOKI_NO_MS_ACCURACY, TOKI_TS_JSON);
+  if (diff >= 60U) {
+    updateLocalTime();
+    calculateSunriseAndSunset();
+  }
+  if (presetsModifiedTime == 0) presetsModifiedTime = timein;
 }

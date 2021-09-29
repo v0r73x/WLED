@@ -53,13 +53,16 @@
 const uint16_t samples = 512;                   // This value MUST ALWAYS be a power of 2
 
 extern uint8_t binNum;                          // Used to select the bin for FFT based beat detection
-extern uint8_t maxVol;                          // Reasonable value for constant volume for 'peak detector', as it won't always trigger
+extern uint8_t maxVol = 10;                     // Reasonable value for constant volume for 'peak detector', as it won't always trigger
 extern uint8_t myVals[32];                      // Used to store a pile of samples because WLED frame rate and WLED sample rate are not synchronized. Frame rate is too low.
+extern uint8_t squelch;
 extern int sample;                              // Current sample. Must only be updated ONCE!!!
 extern int sampleAgc;                           // Our AGC sample
 extern bool samplePeak;                         // Boolean flag for peak. Responding routine must reset this flag
+extern byte soundAgc;
+extern byte soundSquelch;
 extern float sampleAvg;                         // Smoothed Average
-extern double beat;                             // beat Detection
+extern double beat = 0;                         // beat Detection
 extern double FFT_Magnitude;                    // Same here. Not currently used though
 extern double FFT_MajorPeak;                    // Optional inclusion for our volume routines
 

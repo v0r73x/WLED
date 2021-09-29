@@ -65,28 +65,10 @@ void transmitAudioData() {
 } // transmitAudioData()
 
 /***************** SHARED AUDIO VARIABLES *****************/
-
-// TODO: put comments in one place only so they don't get out of sync as they change
-
-uint8_t myVals[32];                             // Used to store a pile of samples because WLED frame rate and WLED sample rate are not synchronized. Frame rate is too low.
-int sample;                                     // Current sample. Must only be updated ONCE!!!
-int sampleAgc;                                  // Our AGC sample
-bool samplePeak = 0;                            // Boolean flag for peak. Responding routine must reset this flag
-float sampleAvg = 0;                            // Smoothed Average
-double beat = 0;                                // beat Detection
-double FFT_Magnitude = 0;                       // Same here. Not currently used though
-double FFT_MajorPeak = 0;                       // Optional inclusion for our volume routines
-uint16_t mAvg = 0;
-
-// Try and normalize fftBin values to a max of 4096, so that 4096/16 = 256.
-// Oh, and bins 0,1,2 are no good, so we'll zero them out.
-double fftBin[samples];                 // raw FFT data
-int fftResult[16];                      // summary of bins array. 16 summary bins.
+// MOVED TO SOUND_REACTIVE.H
 
 /************ SAMPLING AND FFT LOCAL VARIABLES ************/
 
-uint8_t binNum;                                 // Used to select the bin for FFT based beat detection
-uint8_t maxVol = 10;                            // Reasonable value for constant volume for 'peak detector', as it won't always trigger
 uint8_t targetAgc = 60;                         // This is our setPoint at 20% of max for the adjusted output
 bool udpSamplePeak = 0;                         // Boolean flag for peak. Set at the same tiem as samplePeak, but reset by transmitAudioData
 int delayMs = 10;                               // I don't want to sample too often and overload WLED
@@ -97,6 +79,8 @@ uint16_t micData;                               // Analog input for FFT
 uint16_t micDataSm;                             // Smoothed mic data, as it's a bit twitchy
 long lastTime = 0;
 long timeOfPeak = 0;
+float expAdjF;                                  // Used for exponential filter.
+float weighting = 0.2;                          // Exponential filter weighting. Will be adjustable in a future release.
 float micLev = 0;                               // Used to convert returned value to have '0' as minimum. A leveller
 float multAgc;                                  // sample * multAgc = sampleAgc. Our multiplier
 
@@ -154,7 +138,7 @@ double fftAdd( int from, int to) {
 
 // FFT main code
 void FFTcode( void * parameter) {
-  //DEBUG_PRINT("FFT running on core: "); DEBUG_PRINTLN(xPortGetCoreID());
+  DEBUG_PRINT("FFT running on core: "); DEBUG_PRINTLN(xPortGetCoreID());
   //double beatSample = 0;  // COMMENTED OUT - UNUSED VARIABLE COMPILER WARNINGS
   //double envelope = 0;    // COMMENTED OUT - UNUSED VARIABLE COMPILER WARNINGS
 
@@ -170,7 +154,7 @@ void FFTcode( void * parameter) {
     //extern double volume;   // COMMENTED OUT - UNUSED VARIABLE COMPILER WARNINGS
 
     for(int i=0; i<samples; i++) {
-      if (digitalMic == false) {
+      if ((digitalMic && dmEnabled) == false) {
         micData = analogRead(audioPin);           // Analog Read
       } else {
         int32_t digitalSample = 0;
@@ -192,7 +176,7 @@ void FFTcode( void * parameter) {
       // DEBUGSR_PRINT(micDataSm);
       // DEBUGSR_PRINT("\n");
 
-      if (digitalMic == false) { while(micros() - microseconds < sampling_period_us){/*empty loop*/} }
+      if ((digitalMic && dmEnabled) == false) { while(micros() - microseconds < sampling_period_us){/*empty loop*/} }
 
       microseconds += sampling_period_us;
     }
@@ -277,9 +261,9 @@ void FFTcode( void * parameter) {
 } // FFTcode()
 
 void getSample() {
-  const float weighting = 0.2;                    // Exponential filter weighting. Will be adjustable in a future release.
-  float expAdjF;                                  // Used for exponential filter.
   static long peakTime;
+  //extern double FFT_Magnitude;                    // Optional inclusion for our volume routines // COMMENTED OUT - UNUSED VARIABLE COMPILER WARNINGS
+  //extern double FFT_MajorPeak;                    // Same here. Not currently used though       // COMMENTED OUT - UNUSED VARIABLE COMPILER WARNINGS
 
   #ifdef WLED_DISABLE_SOUND
     micIn = inoise8(millis(), millis());          // Simulated analog read
@@ -289,13 +273,12 @@ void getSample() {
     DEBUGSR_PRINT("micIn:\tmicData:\tmicIn>>2:\tmic_In_abs:\tsample:\tsampleAdj:\tsampleAvg:\n");
     DEBUGSR_PRINT(micIn); DEBUGSR_PRINT("\t"); DEBUGSR_PRINT(micData);
 /*-------END DEBUG-------*/
-
-    if (digitalMic == false) micIn = micIn >> 2;  // ESP32 has 2 more bits of A/D than ESP8266, so we need to normalize to 10 bit.
+// We're still using 10 bit, but changing the analog read resolution in usermod.cpp
+//    if (digitalMic == false) micIn = micIn >> 2;  // ESP32 has 2 more bits of A/D than ESP8266, so we need to normalize to 10 bit.
 /*---------DEBUG---------*/
     DEBUGSR_PRINT("\t\t"); DEBUGSR_PRINT(micIn);
 /*-------END DEBUG-------*/
   #endif
-
   micLev = ((micLev * 31) + micIn) / 32;          // Smooth it out over the last 32 samples for automatic centering
   micIn -= micLev;                                // Let's center it to 0 now
   micIn = abs(micIn);                             // And get the absolute value of each sample
@@ -303,7 +286,7 @@ void getSample() {
   DEBUGSR_PRINT("\t\t"); DEBUGSR_PRINT(micIn);
 /*-------END DEBUG-------*/
 
-  // Using an exponential filter to smooth out the signal. We'll add controls for this in a future release.
+// Using an exponential filter to smooth out the signal. We'll add controls for this in a future release.
   expAdjF = (weighting * micIn + (1.0-weighting) * expAdjF);
   expAdjF = (expAdjF <= soundSquelch) ? 0: expAdjF;
 
@@ -327,27 +310,19 @@ void getSample() {
   if (millis() - timeOfPeak > MIN_SHOW_DELAY) {   // Auto-reset of samplePeak after a complete frame has passed.
     samplePeak = 0;
     udpSamplePeak = 0;
-  }
+    }
 
   if (userVar1 == 0) samplePeak = 0;
-
   // Poor man's beat detection by seeing if sample > Average + some value.
-/*------FFT DEBUG--------*/
-  DEBUGFFT_PRINT(binNum); DEBUGFFT_PRINT("\t");
-  DEBUGFFT_PRINT(fftBin[binNum]); DEBUGFFT_PRINT("\t");
-  DEBUGFFT_PRINT(fftAvg[binNum/16]); DEBUGFFT_PRINT("\t");
-  DEBUGFFT_PRINT(maxVol); DEBUGFFT_PRINT("\t");
-  DEBUGFFT_PRINT(samplePeak); DEBUGFFT_PRINT("\n\n");
-/*-------END DEBUG-------*/
-
-  if (fftBin[binNum] > ( maxVol) && millis() > (peakTime + 100)) {  // This goes through ALL of the 255 bins
-  //if (sample > (sampleAvg + maxVol) && millis() > (peakTime + 100)) {
-    // Then we got a peak, else we don't. Display routines need to reset the samplepeak value in case they miss the trigger.
+  //  Serial.print(binNum); Serial.print("\t"); Serial.print(fftBin[binNum]); Serial.print("\t"); Serial.print(fftAvg[binNum/16]); Serial.print("\t"); Serial.print(maxVol); Serial.print("\t"); Serial.println(samplePeak);
+    if (fftBin[binNum] > ( maxVol) && millis() > (peakTime + 100)) {                     // This goe through ALL of the 255 bins
+  //  if (sample > (sampleAvg + maxVol) && millis() > (peakTime + 200)) {
+  // Then we got a peak, else we don't. The peak has to time out on its own in order to support UDP sound sync.
     samplePeak = 1;
     timeOfPeak = millis();
     udpSamplePeak = 1;
     userVar1 = samplePeak;
-    peakTime = millis();
+    peakTime=millis();
   }
 } // getSample()
 
@@ -486,6 +461,7 @@ void SoundreactiveUsermod::setup() {
       digitalMic = true;
     } else {
       Serial.println("Digital microphone is NOT present.");
+      analogReadResolution(10);          // Default is 12, which is less linear. We're also only using 10 bits as a result of our ESP8266 history.
     }
   }
 

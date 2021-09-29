@@ -94,7 +94,7 @@ void loadSettingsFromEEPROM()
 
   notifyButton = EEPROM.read(230);
   notifyTwice = EEPROM.read(231);
-  buttonEnabled = EEPROM.read(232);
+  buttonType[0] = EEPROM.read(232) ? BTN_TYPE_PUSH : BTN_TYPE_NONE;
 
   staticIP[0] = EEPROM.read(234);
   staticIP[1] = EEPROM.read(235);
@@ -158,6 +158,7 @@ void loadSettingsFromEEPROM()
   receiveNotifications = (receiveNotificationBrightness || receiveNotificationColor || receiveNotificationEffects);
 
   if (lastEEPROMversion > 4) {
+    #ifndef WLED_DISABLE_HUESYNC
     huePollingEnabled = EEPROM.read(2048);
     //hueUpdatingEnabled = EEPROM.read(2049);
     for (int i = 2050; i < 2054; ++i)
@@ -173,6 +174,7 @@ void loadSettingsFromEEPROM()
     hueApplyBri = EEPROM.read(2104);
     hueApplyColor = EEPROM.read(2105);
     huePollLightId = EEPROM.read(2106);
+    #endif
   }
   if (lastEEPROMversion > 5) {
     overlayMin = EEPROM.read(2150);
@@ -189,18 +191,20 @@ void loadSettingsFromEEPROM()
     countdownSec = EEPROM.read(2161);
     setCountdown();
 
+    #ifndef WLED_DISABLE_CRONIXIE
     readStringFromEEPROM(2165, cronixieDisplay, 6);
     cronixieBacklight = EEPROM.read(2171);
+    #endif
 
     //macroBoot = EEPROM.read(2175);
     macroAlexaOn = EEPROM.read(2176);
     macroAlexaOff = EEPROM.read(2177);
-    macroButton = EEPROM.read(2178);
-    macroLongPress = EEPROM.read(2179);
+    macroButton[0] = EEPROM.read(2178);
+    macroLongPress[0] = EEPROM.read(2179);
     macroCountdown = EEPROM.read(2180);
     macroNl = EEPROM.read(2181);
-    macroDoublePress = EEPROM.read(2182);
-    if (macroDoublePress > 16) macroDoublePress = 0;
+    macroDoublePress[0] = EEPROM.read(2182);
+    if (macroDoublePress[0] > 16) macroDoublePress[0] = 0;
   }
 
   if (lastEEPROMversion > 6)
@@ -238,7 +242,7 @@ void loadSettingsFromEEPROM()
 
   if (lastEEPROMversion > 9)
   {
-    strip.setColorOrder(EEPROM.read(383));
+    //strip.setColorOrder(EEPROM.read(383));
     irEnabled = EEPROM.read(385);
     strip.ablMilliampsMax = EEPROM.read(387) + ((EEPROM.read(388) << 8) & 0xFF00);
   } else if (lastEEPROMversion > 1) //ABL is off by default when updating from version older than 0.8.2
@@ -318,19 +322,7 @@ void loadSettingsFromEEPROM()
   notifyMacro = EEPROM.read(2201);
 
   strip.rgbwMode = EEPROM.read(2203);
-  skipFirstLed = EEPROM.read(2204);
-
-  if (EEPROM.read(2210) || EEPROM.read(2211) || EEPROM.read(2212))
-  {
-    presetCyclingEnabled = EEPROM.read(2205);
-    presetCycleTime = EEPROM.read(2206) + ((EEPROM.read(2207) << 8) & 0xFF00);
-    if (lastEEPROMversion < 21) presetCycleTime /= 100; //was stored in ms, now is in tenths of a second
-    presetCycleMin = EEPROM.read(2208);
-    presetCycleMax = EEPROM.read(2209);
-    //was presetApplyBri = EEPROM.read(2210);
-    //was presetApplyCol = EEPROM.read(2211);
-    //was presetApplyFx = EEPROM.read(2212);
-  }
+  //skipFirstLed = EEPROM.read(2204);
 
   bootPreset = EEPROM.read(389);
   wifiLock = EEPROM.read(393);
@@ -344,8 +336,10 @@ void loadSettingsFromEEPROM()
   //custom macro memory (16 slots/ each 64byte)
   //1024-2047 reserved
 
+  #ifndef WLED_DISABLE_BLYNK
   readStringFromEEPROM(2220, blynkApiKey, 35);
   if (strlen(blynkApiKey) < 25) blynkApiKey[0] = 0;
+  #endif
 
   #ifdef WLED_ENABLE_DMX
   // DMX (2530 - 2549)2535
@@ -365,7 +359,7 @@ void loadSettingsFromEEPROM()
   //2944 - 3071 reserved for Usermods (need to increase EEPSIZE to 3072 in const.h)
 
 
-// Audio Reactive specific read settings
+// WLEDSR / Audio Reactive specific read settings
 
   if (lastEEPROMversion > 20) {                                   // Version sanity checking
     soundSquelch =  EEPROM.read(EEP_AUDIO);
@@ -376,13 +370,24 @@ void loadSettingsFromEEPROM()
     effectFFT2 = EEPROM.read(EEP_AUDIO+5);
     effectFFT3 = EEPROM.read(EEP_AUDIO+6);
 
-    #ifndef ESP8266
-      strip.matrixWidth = EEPROM.read(EEP_AUDIO+7) + ((EEPROM.read(EEP_AUDIO+8) << 8) & 0xFF00); if (strip.matrixWidth == 0) strip.matrixWidth = 1;
-      strip.matrixHeight = EEPROM.read(EEP_AUDIO+9) + ((EEPROM.read(EEP_AUDIO+10) << 10) & 0xFF00); if (strip.matrixHeight == 0) strip.matrixHeight = ledCount;
-      strip.matrixSerpentine = EEPROM.read(EEP_AUDIO+11); // > 0;
-    #endif
+    strip.stripOrMatrixPanel = EEPROM.read(EEP_AUDIO+7);
+    strip.matrixWidth = EEPROM.read(EEP_AUDIO+8) + ((EEPROM.read(EEP_AUDIO+9) << 8) & 0xFF00); //if (strip.matrixWidth == 0) strip.matrixWidth = ledCount;
+    strip.matrixHeight = EEPROM.read(EEP_AUDIO+10) + ((EEPROM.read(EEP_AUDIO+11) << 8) & 0xFF00); //if (strip.matrixHeight == 0) strip.matrixHeight = 1;
 
-    sampleGain = EEPROM.read(EEP_AUDIO+12);
+    strip.setStripOrPanelWidthAndHeight();
+
+    strip.matrixPanels = EEPROM.read(EEP_AUDIO+12);
+    strip.matrixHorizontalPanels = EEPROM.read(EEP_AUDIO+13);
+    strip.matrixVerticalPanels = EEPROM.read(EEP_AUDIO+14);
+
+    strip.panelFirstLedTopBottom = EEPROM.read(EEP_AUDIO+15); // > 0;
+    strip.panelFirstLedLeftRight = EEPROM.read(EEP_AUDIO+16); // > 0;
+    strip.panelOrientationHorVert = EEPROM.read(EEP_AUDIO+17); // > 0;
+    strip.panelSerpentine = EEPROM.read(EEP_AUDIO+18); // > 0;
+    strip.panelTranspose = EEPROM.read(EEP_AUDIO+19); // > 0;
+
+    sampleGain = EEPROM.read(EEP_AUDIO+20);
+    soundAgc = EEPROM.read(EEP_AUDIO+21); 
   }
 
 // FFT Slider Data Preset Protocol 5 bytes, 25 "slots"
@@ -449,10 +454,10 @@ void deEEP() {
           for (byte j = 0; j < numChannels; j++) colX.add(EEPROM.read(memloc + j));
         }
 
-        segObj[F("fx")]  = EEPROM.read(i+10);
+        segObj["fx"]     = EEPROM.read(i+10);
         segObj[F("sx")]  = EEPROM.read(i+11);
         segObj[F("ix")]  = EEPROM.read(i+16);
-        segObj[F("pal")] = EEPROM.read(i+17);
+        segObj["pal"]    = EEPROM.read(i+17);
         segObj[F("f1x")] = EEPROM.read(k);      // Read FFT Slider values from EEPROM for presets
         segObj[F("f2x")] = EEPROM.read(k+1);    // Read FFT Slider values from EEPROM for presets
         segObj[F("f3x")] = EEPROM.read(k+2);    // Read FFT Slider values from EEPROM for presets
@@ -507,6 +512,10 @@ void deEEPSettings() {
   EEPROM.begin(EEPSIZE);
   loadSettingsFromEEPROM();
   EEPROM.end();
+
+  //call readFromConfig() with an empty object so that usermods can initialize to defaults prior to saving
+  JsonObject empty = JsonObject();
+  usermods.readFromConfig(empty);
 
   serializeConfig();
 }

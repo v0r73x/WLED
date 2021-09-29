@@ -90,7 +90,7 @@ function writeHtmlGzipped(sourceFile, resultFile) {
  * Binary array for the Web UI.
  * gzip is used for smaller size and improved speeds.
  *
- * Please see https://github.com/Aircoookie/WLED/wiki/Add-own-functionality#changing-web-ui
+ * Please see https://kno.wled.ge/advanced/custom-features/#changing-web-ui
  * to find out how to easily modify the web UI source!
  */
 
@@ -121,7 +121,7 @@ function filter(str, type) {
       collapseWhitespace: true,
       maxLineLength: 80,
       minifyCSS: true,
-      minifyJS: true, 
+      minifyJS: true,
       continueOnParseError: false,
       removeComments: true,
     });
@@ -131,7 +131,7 @@ function filter(str, type) {
       conservativeCollapse: true,
       maxLineLength: 80,
       minifyCSS: true,
-      minifyJS: true, 
+      minifyJS: true,
       continueOnParseError: false,
       removeComments: true,
     });
@@ -175,7 +175,7 @@ function writeChunks(srcDir, specs, resultFile) {
   let src = `/*
  * More web UI HTML source arrays.
  * This file is auto generated, please don't make any changes manually.
- * Instead, see https://github.com/Aircoookie/WLED/wiki/Add-own-functionality#changing-web-ui
+ * Instead, see https://kno.wled.ge/advanced/custom-features/#changing-web-ui
  * to find out how to easily modify the web UI source!
  */
 `;
@@ -349,6 +349,22 @@ const char PAGE_settings_dmx[] PROGMEM = R"=====()=====";
             "function GetV() {var d=document;\n"
           ),
     },
+    {
+      file: "settings_um.htm",
+      name: "PAGE_settings_um",
+      prepend: "=====(",
+      append: ")=====",
+      method: "plaintext",
+      filter: "html-minify",
+      mangle: (str) =>
+        str
+          .replace(/\<link rel="stylesheet".*\>/gms, "")
+          .replace(/\<style\>.*\<\/style\>/gms, "%CSS%%SCSS%")
+          .replace(
+            /function GetV().*\<\/script\>/gms,
+            "function GetV() {var d=document;\n"
+          ),
+    }
   ],
   "wled00/html_settings.h"
 );

@@ -11,7 +11,7 @@
 // 
 // char **getModesQStrings()
 // Provides an array of char* (pointers) to the names of the
-// palettes within JSON_mode_names, in the same order as 
+// modes within JSON_mode_names, in the same order as 
 // JSON_mode_names. These strings end in double quote (")
 // (or \0 if there is a problem).
 //
@@ -203,7 +203,9 @@ public:
                 complete = true;
                 break;
             case ',':
-                modeIndex++;
+                if (!insideQuotes) {                //WLEDSR(HarryB) added condition to differentiate between comma in mode name or as seperator
+                    modeIndex++;
+                }
             default:
                 if (!insideQuotes) {
                     break;
