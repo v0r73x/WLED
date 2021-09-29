@@ -106,8 +106,6 @@ double beat = 0;                                // beat Detection
 
 #include "arduinoFFT.h"
 
-TaskHandle_t FFT_Task;
-
 const i2s_port_t I2S_PORT = I2S_NUM_0;
 const int BLOCK_SIZE = 64;
 const int SAMPLE_RATE = 10240;                  // Base sample rate in Hz
