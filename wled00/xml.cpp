@@ -55,7 +55,7 @@ void XML_response(AsyncWebServerRequest *request, char* dest)
   oappend(SET_F("</ix><fp>"));
   oappendi(effectPalette);
   oappend(SET_F("</fp><wv>"));
-  if (strip.rgbwMode) {
+  if (strip.isRgbw) {
    oappendi(col[3]);
   } else {
    oappend("-1");
@@ -65,7 +65,7 @@ void XML_response(AsyncWebServerRequest *request, char* dest)
   oappend(SET_F("</ws><ps>"));
   oappendi((currentPreset < 1) ? 0:currentPreset);
   oappend(SET_F("</ps><cy>"));
-  oappendi(presetCyclingEnabled);
+  oappendi(currentPlaylist > 0);
   oappend(SET_F("</cy><ds>"));
   oappend(serverDescription);
   if (realtimeMode)
@@ -162,13 +162,24 @@ void sappends(char stype, const char* key, char* val)
 {
   switch(stype)
   {
-    case 's': //string (we can interpret val as char*)
+    case 's': { //string (we can interpret val as char*)
       oappend("d.Sf.");
       oappend(key);
       oappend(".value=\"");
-      oappend(val);
+      //convert "%" to "%%" to make EspAsyncWebServer happy
+      char buf[130];
+      uint8_t len = strlen(val) +1;
+      uint8_t s = 0;
+      for (uint8_t i = 0; i < len; i++) {
+        buf[i+s] = val[i];
+        if (val[i] == '%') {
+          s++; buf[i+s] = '%';
+        }
+      }
+
+      oappend(buf);
       oappend("\";");
-      break;
+      break; }
     case 'm': //message
       oappend(SET_F("d.getElementsByClassName"));
       oappend(key);
@@ -183,13 +194,13 @@ void sappends(char stype, const char* key, char* val)
 //get values for settings form in javascript
 void getSettingsJS(byte subPage, char* dest)
 {
-  //0: menu 1: wifi 2: leds 3: ui 4: sync 5: time 6: sec
+  //0: menu 1: wifi 2: leds 3: ui 4: sync 5: time 6: sec 7: DMX 8: usermods 9: sound
   DEBUG_PRINT(F("settings resp"));
   DEBUG_PRINTLN(subPage);
   obuf = dest;
   olen = 0;
 
-  if (subPage <1 || subPage >8) return;
+  if (subPage <1 || subPage >9) return;
 
   if (subPage == 1) {
     sappends('s',SET_F("CS"),clientSSID);
@@ -260,27 +271,53 @@ void getSettingsJS(byte subPage, char* dest)
   if (subPage == 2) {
     char nS[8];
 
-    // add usermod pins as d.um_p array (TODO: usermod config shouldn't use state. instead we should load "um" object from cfg.json)
-    /*DynamicJsonDocument doc(JSON_BUFFER_SIZE);
-    JsonObject mods = doc.createNestedObject(F("mods"));
-    usermods.addToJsonState(mods);
+    // add reserved and usermod pins as d.um_p array
+    DynamicJsonDocument doc(JSON_BUFFER_SIZE/2);
+    JsonObject mods = doc.createNestedObject(F("um"));
+    usermods.addToConfig(mods);
+    oappend(SET_F("d.um_p=["));
     if (!mods.isNull()) {
       uint8_t i=0;
-      oappend(SET_F("d.um_p=["));
       for (JsonPair kv : mods) {
-        if (strncmp_P(kv.key().c_str(),PSTR("pin_"),4) == 0) {
-          if (i++) oappend(SET_F(","));
-          oappend(itoa((int)kv.value(),nS,10));
+        if (!kv.value().isNull()) {
+          // element is an JsonObject
+          JsonObject obj = kv.value();
+          if (obj["pin"] != nullptr) {
+            if (obj["pin"].is<JsonArray>()) {
+              JsonArray pins = obj["pin"].as<JsonArray>();
+              for (JsonVariant pv : pins) {
+                if (i++) oappend(SET_F(","));
+                oappendi(pv.as<int>());
+              }
+            } else {
+              if (i++) oappend(SET_F(","));
+              oappendi(obj["pin"].as<int>());
+            }
+          }
         }
       }
-      oappend(SET_F("];"));
-    }*/
+      if (i) oappend(SET_F(","));
+      oappend(SET_F("6,7,8,9,10,11")); // flash memory pins
+      #ifdef WLED_ENABLE_DMX
+        oappend(SET_F(",2")); // DMX hardcoded pin
+      #endif
+      //Adalight / Serial in requires pin 3 to be unused. However, Serial input can not be prevented by WLED
+      #ifdef WLED_DEBUG
+        oappend(SET_F(",1")); // debug output (TX) pin
+      #endif
+      #if defined(ARDUINO_ARCH_ESP32) && defined(WLED_USE_PSRAM)
+        if (psramFound()) oappend(SET_F(",16,17")); // GPIO16 & GPIO17 reserved for SPI RAM
+      #endif
+      //TODO: add reservations for Ethernet shield pins
+      #ifdef WLED_USE_ETHERNET
+      #endif
+    }
+    oappend(SET_F("];"));
 
+    // set limits
     oappend(SET_F("bLimits("));
-    oappend(itoa(WLED_MAX_BUSSES,nS,10));
-    oappend(",");
-    oappend(itoa(MAX_LEDS_PER_BUS,nS,10));
-    oappend(",");
+    oappend(itoa(WLED_MAX_BUSSES,nS,10));  oappend(",");
+    oappend(itoa(MAX_LEDS_PER_BUS,nS,10)); oappend(",");
     oappend(itoa(MAX_LED_MEMORY,nS,10));
     oappend(SET_F(");"));
 
@@ -289,8 +326,9 @@ void getSettingsJS(byte subPage, char* dest)
     oappend(";");
 
     sappend('v',SET_F("LC"),ledCount);
+    sappend('c',SET_F("MS"),autoSegments);
 
-    for (uint8_t s=0; s < busses.getNumBusses(); s++){
+    for (uint8_t s=0; s < busses.getNumBusses(); s++) {
       Bus* bus = busses.getBus(s);
       char lp[4] = "L0"; lp[2] = 48+s; lp[3] = 0; //ascii 0-9 //strip data pin
       char lc[4] = "LC"; lc[2] = 48+s; lc[3] = 0; //strip length
@@ -298,6 +336,7 @@ void getSettingsJS(byte subPage, char* dest)
       char lt[4] = "LT"; lt[2] = 48+s; lt[3] = 0; //strip type
       char ls[4] = "LS"; ls[2] = 48+s; ls[3] = 0; //strip start LED
       char cv[4] = "CV"; cv[2] = 48+s; cv[3] = 0; //strip reverse
+      char sl[4] = "SL"; sl[2] = 48+s; sl[3] = 0; //skip 1st LED
       oappend(SET_F("addLEDs(1);"));
       uint8_t pins[5];
       uint8_t nPins = bus->getPins(pins);
@@ -310,6 +349,7 @@ void getSettingsJS(byte subPage, char* dest)
       sappend('v',co,bus->getColorOrder());
       sappend('v',ls,bus->getStart());
       sappend('c',cv,bus->reversed);
+      sappend('c',sl,bus->skippedLeds());
     }
     sappend('v',SET_F("MA"),strip.ablMilliampsMax);
     sappend('v',SET_F("LA"),strip.milliampsPerLed);
@@ -322,7 +362,6 @@ void getSettingsJS(byte subPage, char* dest)
     }
 
     sappend('v',SET_F("CA"),briS);
-
     sappend('v',SET_F("AW"),strip.rgbwMode);
 
     sappend('c',SET_F("BO"),turnOnAtBoot);
@@ -338,11 +377,18 @@ void getSettingsJS(byte subPage, char* dest)
     sappend('v',SET_F("TL"),nightlightDelayMinsDefault);
     sappend('v',SET_F("TW"),nightlightMode);
     sappend('i',SET_F("PB"),strip.paletteBlend);
-    sappend('c',SET_F("SL"),skipFirstLed);
     sappend('v',SET_F("RL"),rlyPin);
     sappend('c',SET_F("RM"),rlyMde);
-    sappend('v',SET_F("BT"),btnPin);
+    for (uint8_t i=0; i<WLED_MAX_BUTTONS; i++) {
+      oappend(SET_F("addBtn("));
+      oappend(itoa(i,nS,10));  oappend(",");
+      oappend(itoa(btnPin[i],nS,10)); oappend(",");
+      oappend(itoa(buttonType[i],nS,10));
+      oappend(SET_F(");"));
+    }
+    sappend('v',SET_F("TT"),touchThreshold);
     sappend('v',SET_F("IR"),irPin);
+    sappend('v',SET_F("IT"),irEnabled);
   }
 
   if (subPage == 3)
@@ -353,10 +399,11 @@ void getSettingsJS(byte subPage, char* dest)
 
   if (subPage == 4)
   {
-    sappend('v',SET_F("BT"),buttonType);
-    sappend('v',SET_F("IR"),irEnabled);
     sappend('v',SET_F("UP"),udpPort);
     sappend('v',SET_F("U2"),udpPort2);
+    sappend('v',SET_F("GS"),syncGroups);
+    sappend('v',SET_F("GR"),receiveGroups);
+
     sappend('c',SET_F("RB"),receiveNotificationBrightness);
     sappend('c',SET_F("RC"),receiveNotificationColor);
     sappend('c',SET_F("RX"),receiveNotificationEffects);
@@ -384,6 +431,7 @@ void getSettingsJS(byte subPage, char* dest)
     sappends('s',SET_F("AI"),alexaInvocationName);
     sappend('c',SET_F("SA"),notifyAlexa);
     sappends('s',SET_F("BK"),(char*)((blynkEnabled)?SET_F("Hidden"):""));
+    #ifndef WLED_DISABLE_BLYNK
     sappends('s',SET_F("BH"),blynkHost);
     sappend('v',SET_F("BP"),blynkPort);
     if (!(((audioSyncEnabled)>>(0)) & 1) && !(((audioSyncEnabled)>>(1)) & 1)) {
@@ -409,6 +457,7 @@ void getSettingsJS(byte subPage, char* dest)
     sappends('s',SET_F("MQCID"),mqttClientID);
     sappends('s',SET_F("MD"),mqttDeviceTopic);
     sappends('s',SET_F("MG"),mqttGroupTopic);
+    sappend('c',SET_F("BM"),buttonPublishMqtt);
     #endif
 
     #ifndef WLED_DISABLE_HUESYNC
@@ -463,8 +512,10 @@ void getSettingsJS(byte subPage, char* dest)
     sappend('v',SET_F("OM"),analogClock12pixel);
     sappend('c',SET_F("OS"),analogClockSecondsTrail);
     sappend('c',SET_F("O5"),analogClock5MinuteMarks);
+    #ifndef WLED_DISABLE_CRONIXIE
     sappends('s',SET_F("CX"),cronixieDisplay);
     sappend('c',SET_F("CB"),cronixieBacklight);
+    #endif
     sappend('c',SET_F("CE"),countdownMode);
     sappend('v',SET_F("CY"),countdownYear);
     sappend('v',SET_F("CI"),countdownMonth);
@@ -475,11 +526,16 @@ void getSettingsJS(byte subPage, char* dest)
 
     sappend('v',SET_F("A0"),macroAlexaOn);
     sappend('v',SET_F("A1"),macroAlexaOff);
-    sappend('v',SET_F("MP"),macroButton);
-    sappend('v',SET_F("ML"),macroLongPress);
     sappend('v',SET_F("MC"),macroCountdown);
     sappend('v',SET_F("MN"),macroNl);
-    sappend('v',SET_F("MD"),macroDoublePress);
+    for (uint8_t i=0; i<WLED_MAX_BUTTONS; i++) {
+      oappend(SET_F("addRow("));
+      oappend(itoa(i,tm,10));  oappend(",");
+      oappend(itoa(macroButton[i],tm,10)); oappend(",");
+      oappend(itoa(macroLongPress[i],tm,10)); oappend(",");
+      oappend(itoa(macroDoublePress[i],tm,10));
+      oappend(SET_F(");"));
+    }
 
     char k[4];
     k[2] = 0; //Time macros
@@ -531,13 +587,20 @@ void getSettingsJS(byte subPage, char* dest)
     sappend('i',SET_F("CH13"),DMXFixtureMap[12]);
     sappend('i',SET_F("CH14"),DMXFixtureMap[13]);
     sappend('i',SET_F("CH15"),DMXFixtureMap[14]);
-    }
+  }
   #endif
 
-  if (subPage == 8)
-  {
+  if (subPage == 8) { //usermods
+    oappend(SET_F("numM="));
+    oappendi(usermods.getModCount());
+    oappend(";");
+  }
+
+  if (subPage == 9) { // sound reactive
     sappend('v',SET_F("SQ"),soundSquelch);
     sappend('v',SET_F("GN"),sampleGain);
-    }
+    sappend('c',SET_F("AGC"),soundAgc);
+  }
+
   oappend(SET_F("}</script>"));
 }

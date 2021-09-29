@@ -25,8 +25,8 @@ Welcome to our Sound Reactive fork of WLED. In addition to the features of WLED 
 
 We currently have 3 active forks for our Sound Reactive WLED. They are:
 
-- [ESP32 standard version (ESP8266 will be deprecated)](https://github.com/atuline/WLED)
-- [ESP32 development version (ESP8266 will be deprecated)](https://github.com/atuline/WLED/tree/dev)
+- [ESP32 standard version (ESP8266 is no longer supported)](https://github.com/atuline/WLED)
+- [ESP32 development version (ESP8266 is no longer supported)](https://github.com/atuline/WLED/tree/dev)
 - [ESP8266 version](https://github.com/atuline/WLED/tree/ESP8266)
 
 In addition, we have a [Sound Reactive WLED Wiki](https://github.com/atuline/WLED/wiki).
@@ -73,6 +73,7 @@ A fast and feature-rich implementation of an ESP8266/ESP32 webserver to control 
 - MQTT
 - Blynk IoT
 - E1.31, Art-Net, DDP and TPM2.net
+- [diyHue](https://github.com/diyhue/diyHue) (Wled is supported by diyHue, including Hue Sync Entertainment under udp. Thanks to [Gregory Mallios](https://github.com/gmallios))
 - [Hyperion](https://github.com/hyperion-project/hyperion.ng)
 - UDP realtime
 - Alexa voice control (including dimming and color)
@@ -84,7 +85,7 @@ A fast and feature-rich implementation of an ESP8266/ESP32 webserver to control 
 
 ## 📲 Quick start guide and documentation
 
-See the [wiki](https://github.com/Aircoookie/WLED/wiki)!
+See the [documentation on our official site](https://kno.wled.ge)!
 
 [On this page](https://github.com/Aircoookie/WLED/wiki/Learning-the-ropes) you can find excellent tutorials made by the community and helpful tools to help you get your new lamp up and running!
 
