@@ -434,6 +434,8 @@ void getSettingsJS(byte subPage, char* dest)
     #ifndef WLED_DISABLE_BLYNK
     sappends('s',SET_F("BH"),blynkHost);
     sappend('v',SET_F("BP"),blynkPort);
+    #endif
+    
     if (!(((audioSyncEnabled)>>(0)) & 1) && !(((audioSyncEnabled)>>(1)) & 1)) {
       // 0 == udp audio sync off
       sappend('v',SET_F("ASE"), 0);
