@@ -4303,6 +4303,7 @@ uint16_t WS2812FX::mode_midnoise(void) {                  // Midnoise. By Andrew
 // I am the god of hellfire. . . Volume (only) reactive fire routine. Oh, look how short this is.
 uint16_t WS2812FX::mode_noisefire(void) {                 // Noisefire. By Andrew Tuline.
 
+
   currentPalette = CRGBPalette16(CHSV(0,255,2), CHSV(0,255,4), CHSV(0,255,8), CHSV(0, 255, 8),  // Fire palette definition. Lower value = darker.
                                  CHSV(0, 255, 16), CRGB::Red, CRGB::Red, CRGB::Red,
                                  CRGB::DarkOrange,CRGB::DarkOrange, CRGB::Orange, CRGB::Orange,
@@ -4312,12 +4313,13 @@ uint16_t WS2812FX::mode_noisefire(void) {                 // Noisefire. By Andre
     uint16_t index = inoise8(i*SEGMENT.speed/64,millis()*SEGMENT.speed/64*SEGLEN/255);  // X location is constant, but we move along the Y at the rate of millis(). By Andrew Tuline.
     index = (255 - i*256/SEGLEN) * index/(256-SEGMENT.intensity);                       // Now we need to scale index so that it gets blacker as we get close to one of the ends.
                                                                                         // This is a simple y=mx+b equation that's been scaled. index/128 is another scaling.
-
     uint8_t tmpSound = (soundAgc) ? sampleAgc : sampleAvg;
 
     CRGB color = ColorFromPalette(currentPalette, index, tmpSound*2, LINEARBLEND);      // Use the my own palette.
-    setPixelColor(i, color);
+    setPixelColor(i, color.red, color.green, color.blue);
+
   }
+
   return FRAMETIME;
 } // mode_noisefire()
 
