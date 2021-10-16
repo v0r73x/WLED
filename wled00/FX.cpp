@@ -492,7 +492,9 @@ uint16_t WS2812FX::mode_twinkle(void) {
     PRNG16 = (uint16_t)(PRNG16 * 2053) + 13849; // next 'random' number
     uint32_t p = (uint32_t)SEGLEN * (uint32_t)PRNG16;
     uint16_t j = p >> 16;
-    setPixelColor(j, color_from_palette(j, true, PALETTE_SOLID_WRAP, 0));
+//    setPixelColor(j, color_from_palette(j, true, PALETTE_SOLID_WRAP, 0));
+      setPixelColor(j, color_blend(SEGCOLOR(1), color_from_palette(j, true, PALETTE_SOLID_WRAP, 0), 255));  // This supports RGBW.
+
   }
 
   return FRAMETIME;
@@ -1806,8 +1808,9 @@ uint16_t WS2812FX::mode_bpm()
   uint32_t stp = (now / 20) & 0xFF;
   uint8_t beat = beatsin8(SEGMENT.speed, 64, 255);
   for (uint16_t i = 0; i < SEGLEN; i++) {
-    fastled_col = ColorFromPalette(currentPalette, stp + (i * 2), beat - stp + (i * 10));
-    setPixelColor(i, fastled_col.red, fastled_col.green, fastled_col.blue);
+//    fastled_col = ColorFromPalette(currentPalette, stp + (i * 2), beat - stp + (i * 10));
+//    setPixelColor(i, fastled_col.red, fastled_col.green, fastled_col.blue);
+      setPixelColor(i, color_blend(SEGCOLOR(1), color_from_palette(stp + (i * 2), false, PALETTE_SOLID_WRAP, 0), beat - stp + (i * 10)));  // This supports RGBW.
   }
   return FRAMETIME;
 }
@@ -1849,6 +1852,7 @@ uint16_t WS2812FX::mode_noise16_1()
 
     fastled_col = ColorFromPalette(currentPalette, index, 255, LINEARBLEND);   // With that value, look up the 8 bit colour palette value and assign it to the current LED.
     setPixelColor(i, fastled_col.red, fastled_col.green, fastled_col.blue);
+
   }
 
   return FRAMETIME;
@@ -1871,8 +1875,9 @@ uint16_t WS2812FX::mode_noise16_2()
 
     uint8_t index = sin8(noise * 3);                          // map led color based on noise data
 
-    fastled_col = ColorFromPalette(currentPalette, index, noise, LINEARBLEND);   // With that value, look up the 8 bit colour palette value and assign it to the current LED.
-    setPixelColor(i, fastled_col.red, fastled_col.green, fastled_col.blue);
+//    fastled_col = ColorFromPalette(currentPalette, index, noise, LINEARBLEND);   // With that value, look up the 8 bit colour palette value and assign it to the current LED.
+//    setPixelColor(i, fastled_col.red, fastled_col.green, fastled_col.blue);
+    setPixelColor(i, color_blend(SEGCOLOR(1), color_from_palette(index, false, PALETTE_SOLID_WRAP, 0), noise));  // This supports RGBW.
   }
 
   return FRAMETIME;
@@ -1898,8 +1903,9 @@ uint16_t WS2812FX::mode_noise16_3()
 
     uint8_t index = sin8(noise * 3);                          // map led color based on noise data
 
-    fastled_col = ColorFromPalette(currentPalette, index, noise, LINEARBLEND);   // With that value, look up the 8 bit colour palette value and assign it to the current LED.
-    setPixelColor(i, fastled_col.red, fastled_col.green, fastled_col.blue);
+//    fastled_col = ColorFromPalette(currentPalette, index, noise, LINEARBLEND);   // With that value, look up the 8 bit colour palette value and assign it to the current LED.
+//    setPixelColor(i, fastled_col.red, fastled_col.green, fastled_col.blue);
+    setPixelColor(i, color_blend(SEGCOLOR(1), color_from_palette(index, false, PALETTE_SOLID_WRAP, 0), noise));  // This supports RGBW.
   }
 
   return FRAMETIME;
@@ -1986,8 +1992,10 @@ uint16_t WS2812FX::mode_lake() {
   {
     int index = cos8((i*15)+ wave1)/2 + cubicwave8((i*23)+ wave2)/2;
     uint8_t lum = (index > wave3) ? index - wave3 : 0;
-    fastled_col = ColorFromPalette(currentPalette, map(index,0,255,0,240), lum, LINEARBLEND);
-    setPixelColor(i, fastled_col.red, fastled_col.green, fastled_col.blue);
+//    fastled_col = ColorFromPalette(currentPalette, map(index,0,255,0,240), lum, LINEARBLEND);
+//    setPixelColor(i, fastled_col.red, fastled_col.green, fastled_col.blue);
+    setPixelColor(i, color_blend(SEGCOLOR(1), color_from_palette(map(index,0,255,0,240), false, PALETTE_SOLID_WRAP, 0), lum));  // This supports RGBW.
+
   }
   return FRAMETIME;
 }
@@ -3494,7 +3502,7 @@ uint16_t WS2812FX::mode_twinkleup(void) {                 // A very short twinkl
 }
 
 
-// Peaceful noise that's slow and with gradually changing palettes. Does not support WLED palettes or default colours or controls.
+// Peaceful noise that's slow and with gradually changing palettes. Does not support WLED palettes or default colours or controls. because I change them on the fly.
 uint16_t WS2812FX::mode_noisepal(void) {                      // Slow noise palette by Andrew Tuline.
   uint16_t scale = 15 + (SEGMENT.intensity >> 2);             //default was 30
   //#define scale 30
@@ -4317,7 +4325,7 @@ uint16_t WS2812FX::mode_noisefire(void) {                 // Noisefire. By Andre
                                                                                         // This is a simple y=mx+b equation that's been scaled. index/128 is another scaling.
     uint8_t tmpSound = (soundAgc) ? sampleAgc : sampleAvg;
 
-    CRGB color = ColorFromPalette(currentPalette, index, tmpSound*2, LINEARBLEND);      // Use the my own palette.
+    CRGB color = ColorFromPalette(currentPalette, index, tmpSound*2, LINEARBLEND);      // Use my own palette.
     setPixelColor(i, color.red, color.green, color.blue);
 
   }
