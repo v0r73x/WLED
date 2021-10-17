@@ -1804,7 +1804,7 @@ uint16_t WS2812FX::mode_colorwaves()
 // colored stripes pulsing at a defined Beats-Per-Minute (BPM)
 uint16_t WS2812FX::mode_bpm()
 {
-  CRGB fastled_col;
+ // CRGB fastled_col;
   uint32_t stp = (now / 20) & 0xFF;
   uint8_t beat = beatsin8(SEGMENT.speed, 64, 255);
   for (uint16_t i = 0; i < SEGLEN; i++) {
@@ -1862,7 +1862,7 @@ uint16_t WS2812FX::mode_noise16_1()
 uint16_t WS2812FX::mode_noise16_2()
 {
   uint16_t scale = 1000;                                       // the "zoom factor" for the noise
-  CRGB fastled_col;
+//  CRGB fastled_col;
   SEGENV.step += (1 + (SEGMENT.speed >> 1));
 
   for (uint16_t i = 0; i < SEGLEN; i++) {
@@ -1887,7 +1887,7 @@ uint16_t WS2812FX::mode_noise16_2()
 uint16_t WS2812FX::mode_noise16_3()
 {
   uint16_t scale = 800;                                       // the "zoom factor" for the noise
-  CRGB fastled_col;
+//  CRGB fastled_col;
   SEGENV.step += (1 + SEGMENT.speed);
 
   for (uint16_t i = 0; i < SEGLEN; i++) {
@@ -1986,7 +1986,7 @@ uint16_t WS2812FX::mode_lake() {
   int wave1 = beatsin8(sp +2, -64,64);
   int wave2 = beatsin8(sp +1, -64,64);
   uint8_t wave3 = beatsin8(sp +2,   0,80);
-  CRGB fastled_col;
+//  CRGB fastled_col;
 
   for (uint16_t i = 0; i < SEGLEN; i++)
   {
