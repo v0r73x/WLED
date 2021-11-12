@@ -14,10 +14,23 @@
  * Not 100% sure this was done right. There is probably a better way to handle this...
  */
 
+#ifdef ESP8266_I2S
+#include <i2s.h>
+#endif // ESP8266_I2S
 
 // This gets called once at boot. Do all initialization that doesn't depend on network here
 void userSetup()
 {
+#ifdef ESP8266_I2S
+  delay(100); // give mic some time like on 32 branch
+  i2s_rxtx_begin(true, false); // RX = true, TX = false.
+                               // ESP866 I2S is a fixed pin configuration.
+                               //   DATA      GPIO12
+                               //   BCK/SCK   GPIO13
+                               //   WS/LRCLK  GPIO14.
+                               // Tested on INMP441 with grounded L/R (choosing L).
+  i2s_set_rate(SAMPLE_RATE);
+#endif // ESP8266_I2S
 }
 
 // This gets called every time WiFi is (re-)connected. Initialize own network interfaces here

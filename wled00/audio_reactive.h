@@ -7,6 +7,10 @@
 
 #include "wled.h"
 
+#ifdef ESP8266_I2S
+#include <i2s.h>
+#endif // ESP8266_I2S
+
 // WARNING Sound reactive variables that are used by the animations or other asynchronous routines must NOT
 // have interim values, but only updated in a single calculation. These are:
 //
@@ -66,6 +70,10 @@ float sampleAvg = 0;                            // Smoothed Average
 float expAdjF;                                  // Used for exponential filter.
 float weighting = 0.2;                          // Exponential filter weighting. Will be adjustable in a future release.
 
+#ifdef ESP8266_I2S
+int16_t micIn_L;
+int16_t micIn_R;
+#endif // ESP8266_I2S
 
 struct audioSyncPacket {
   char header[6] = UDP_SYNC_HEADER;
@@ -93,7 +101,12 @@ void getSample() {
   #ifdef WLED_DISABLE_SOUND
     micIn = inoise8(millis(), millis());          // Simulated analog read
   #else
-    micIn = analogRead(MIC_PIN);                  // Poor man's analog read
+    #ifdef ESP8266_I2S
+      i2s_read_sample(&micIn_L, &micIn_R, true);
+      micIn = abs(micIn_L); // 16 bit read, could have >> 6 to match analogRead's 10 bit, but in my testing, the range is pretty close to the ADC even with 16 bit.
+    #else
+      micIn = analogRead(MIC_PIN);                  // Poor man's analog read
+    #endif
   #endif
 
 //////

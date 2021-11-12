@@ -315,6 +315,12 @@ void WLED::setup()
   DEBUG_PRINTLN(F("Reading config"));
   deserializeConfigFromFS();
 
+#if ESP8266_I2S
+  pinManager.allocatePin(12); // SD/DIN/Data
+  pinManager.allocatePin(13); // BCK/SCK
+  pinManager.allocatePin(14); // WS/LRCLK
+#endif //ESP8266_I2S
+
 #if STATUSLED
   if (!pinManager.isPinAllocated(STATUSLED)) {
     // NOTE: Special case: The status LED should *NOT* be allocated.
