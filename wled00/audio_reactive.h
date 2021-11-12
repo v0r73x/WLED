@@ -101,9 +101,9 @@ void getSample() {
   #ifdef WLED_DISABLE_SOUND
     micIn = inoise8(millis(), millis());          // Simulated analog read
   #else
-    #ifdef ESP8266_I2S
+    #ifdef ESP8266_I2S // test sketch: https://pastebin.com/SVqWGxrH
       i2s_read_sample(&micIn_L, &micIn_R, true);
-      micIn = abs(micIn_L); // 16 bit read, could have >> 6 to match analogRead's 10 bit, but in my testing, the range is pretty close to the ADC even with 16 bit.
+      micIn = micIn_L; // 16 bit read, could have >> 6 to match analogRead's 10 bit, but in my testing, the range is pretty close to the ADC even with 16 bit.
     #else
       micIn = analogRead(MIC_PIN);                  // Poor man's analog read
     #endif
