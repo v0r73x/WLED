@@ -22,6 +22,7 @@ Welcome to our Sound Reactive fork of WLED. In addition to the features of WLED 
 - Squelch and gain settings for ESP8266 and ESP32 devices for the volume reactive visual effects.
 - 2D settings for ESP32 devices.
 - Frequency reactive sliders for ESP32 devices.
+- ALEXA integration support (acts as Phillips HUE Bulb)
 
 We currently have 3 active forks for our Sound Reactive WLED. They are:
 
